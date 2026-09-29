@@ -1,0 +1,51 @@
+{
+  "_comment": "改完这个文件后跑一次 apply.js 才会生效；日常改价可以直接点胶囊里的齿轮，会存到浏览器本地覆盖这里。",
+
+  "currency": "¥",
+
+  "_usdToCny_note": "只用来把 CLI 报的美元换算成人民币，方便在页脚对账。浮层自己的金额按上面 pricing 里的人民币单价直接算，不经过这个汇率。",
+  "usdToCny": 7.1,
+
+  "display": {
+    "position": "top-right",
+    "collapsed": false,
+    "showInSidebar": true,
+    "showContextRing": true,
+    "showTokenArrows": true,
+    "autoHideWhenIdle": false,
+    "_contextWindow_note": "CLI 对不认识的模型一律假定 200k 上下文（DeepSeek v4 实际 1M），所以这里以本配置为准。想让 CLI 报的值优先就把 preferCliContextWindow 设为 true。",
+    "contextWindowFallback": 1000000,
+    "_autoCompactWindow_note": "真正决定「还能聊多久」的是这条线，不是模型窗口 —— CLI 认不出模型名时一律按 200k 触发自动压缩（本机实测 167K/175K 就压了），1M 的窗口根本够不到。填 0 = 退回按模型窗口显示。",
+    "autoCompactWindow": 200000,
+    "preferCliContextWindow": false
+  },
+
+  "provider": {
+    "_comment": "由 apply.js 从 ~/.claude/settings.json 的 env.ANTHROPIC_BASE_URL 自动识别并覆盖（跑 `node provider.js` 可单独看）。认错了可以在齿轮面板里改。",
+    "id": "deepseek",
+    "label": "DeepSeek",
+    "baseUrl": "https://api.deepseek.com/anthropic",
+    "known": true,
+    "source": "auto"
+  },
+
+  "pricing": {
+    "_comment": "单价单位：人民币 / 每百万 token。cacheHit=缓存命中输入，cacheMiss=缓存未命中输入(缓存写入也按这个价)，output=输出。peak=工作日高峰(北京时间周一至周五 09:00-12:00 和 14:00-18:00)。匹配规则：模型名里含哪行的名字就按哪行算（取最长的那个）。标了 provider 的行只在该服务商下生效；自己加的行不标，哪家都生效。",
+    "peakPricingEnabled": true,
+    "defaultModel": "pro",
+    "models": {
+      "flash": {
+        "label": "deepseek-v4-flash",
+        "provider": "deepseek",
+        "idle": { "cacheHit": 0.02, "cacheMiss": 1.0, "output": 2.0 },
+        "peak": { "cacheHit": 0.04, "cacheMiss": 2.0, "output": 4.0 }
+      },
+      "pro": {
+        "label": "deepseek-v4-pro",
+        "provider": "deepseek",
+        "idle": { "cacheHit": 0.025, "cacheMiss": 3.0, "output": 6.0 },
+        "peak": { "cacheHit": 0.05, "cacheMiss": 6.0, "output": 12.0 }
+      }
+    }
+  }
+}

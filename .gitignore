@@ -1,0 +1,8 @@
+# 本机临时产物 / 个人小工具，不进仓库
+install-result.txt
+ocr.ps1
+_probe.js
+
+# 依赖与日志
+node_modules/
+*.log

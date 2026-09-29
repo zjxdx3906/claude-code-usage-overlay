@@ -1,0 +1,24 @@
+{
+  "modelPricing": {
+    "overrides": {
+      "deepseek-v4-flash": {
+        "input": 0.140845,
+        "output": 0.281690,
+        "cacheRead": 0.002817,
+        "cacheWrite": 0.140845
+      },
+      "deepseek-flash": {
+        "input": 0.140845,
+        "output": 0.281690,
+        "cacheRead": 0.002817,
+        "cacheWrite": 0.140845
+      },
+      "deepseek-v4-pro": {
+        "input": 0.422535,
+        "output": 0.845070,
+        "cacheRead": 0.003521,
+        "cacheWrite": 0.422535
+      }
+    }
+  }
+}
