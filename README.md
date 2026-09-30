@@ -157,7 +157,7 @@ CLI 那边也有个对应的信号：`modelUsage[模型].costBasis`，取值 `"l
 | `config.json` | 价目表 / 汇率 / 窗口与压缩线 / 显示项。改完要重跑 `apply.js` |
 | `apply.js` | 幂等补丁脚本，装/查/卸。每次运行都会重读服务商 |
 | `provider.js` | 从 `settings.json` 的 base_url 识别服务商，`apply.js` 会调用它 |
-| `test.js` | 离线自测（81 项），用最小 DOM stub 喂合成消息 |
+| `test.js` | 离线自测（86 项），用最小 DOM stub 喂合成消息 |
 | `verify-pricing.js` | 拿本机历史转写反查价目表，可对账单校准 |
 | `managed-settings.json` | 给 CLI 用的真实价目（美元），配合下面的 cmd 安装 |
 | `install-managed-pricing.cmd` | 把上面那个文件装到 `C:\Program Files\ClaudeCode\`，需管理员 |
@@ -259,7 +259,8 @@ __cuo.totals("session")    // 当前合计
 ## 实现要点
 
 - **注入方式**：`extension.js` 的 `getHtmlForWebview()` 里有唯一一处
-  `<script nonce="${B}" src="${G}" type="module"></script>`，在它后面插一行加载 `webview/usage-overlay.js`。CSP 是 `script-src 'nonce-${B}'`，注入的标签复用同一个 nonce；同时把 `${$.cspSource}` 也加进 `script-src` 作为兜底。
+  `<script nonce="${?}" src="${?}" type="module"></script>`，在它后面插一行加载 `webview/usage-overlay.js`；CSP 的 `script-src 'nonce-${?}'` 里再补一个 `${$.cspSource}` 作兜底。
+- ⚠️ **那几个变量名是 `apply.js` 现从 extension.js 里学的，一个都不写死**。2.1.284 → 2.1.285 一次改了三处（nonce `B`→`V`、vscode 模块别名 `S1`→`y1`）。写死的后果特别阴：补丁装上、资源拷好、`node --check` 也过，注入的却是一段 `ReferenceError` —— 要到用户重载窗口发现浮层不出现才暴露。现在 `learn()` 会认出 script 标签、nonce 变量、webview 实例（`getHtmlForWebview` 的第一个参数）、vscode 模块别名（从 `?.Uri.joinPath(this.extensionUri,"webview","index.js")` 反推）；哪一样认不出来就**拒绝注入并明说**，绝不拼一段坏代码出去。`test.js` 拿两版真实结构守着这条。
 - **数据来源**：浮层挂 `window.addEventListener("message")`，接宿主转发给 webview 的那条流。
 - ⚠️ **信封是套两层的**（曾经在这里栽过，记账恒为 0）：
 
@@ -279,7 +280,7 @@ __cuo.totals("session")    // 当前合计
 
 ## 已知限制
 
-- **扩展升级会覆盖补丁**。扩展目录换成新的版本号后，重跑 `node apply.js` 即可（幂等，不会重复注入）。想自动化可以挂个计划任务。
+- **扩展升级会覆盖补丁**。扩展目录换成新的版本号后，重跑 `node apply.js` 即可（幂等，不会重复注入）。`node apply.js --status` 会顺便告诉你注入点认不认得出来，不用等重载窗口才发现。想自动化可以挂个计划任务 —— 注意扩展升级时 VS Code 会把旧版本目录整个删掉，所以补丁不是"被覆盖"，是"连目录一起没了"。
 - **只记当前这一场对话**。重载窗口不清零了（见持久化），但**换一场对话就从零开始** —— 切 `sessionId` 时清账是刻意的。要看跨会话的历史统计得用 ccusage 这类读 `~/.claude/projects/*.jsonl` 的工具。
 - **自动压缩线是手填的 200k**。CLI 不在消息里报这个数，所以是按实测（167K/175K 触发）定的一条经验线。哪天真换了触发点，在齿轮面板里改一下。
 - **`managed-settings.json` 不支持高峰/空闲两档价**（schema 一个模型只能给一组单价），所以那里填的是空闲价，高峰时段 CLI 的数字会偏低约一半。浮层本身是分档的，不受影响。

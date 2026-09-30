@@ -1011,4 +1011,52 @@ console.log("\n内置默认值 vs config.json");
   });
 }
 
+console.log("\n补丁脚本能跟上扩展改名（apply.js）");
+{
+  const { learn, buildInject, buildCsp } = require("./apply.js");
+
+  // 真事：2.1.284 → 2.1.285 一次改了三处（nonce B→V、vscode 别名 S1→y1）。
+  // 变量名写死的后果不是"注入失败"而是"注入一段 ReferenceError" ——
+  // 补丁装上、语法检查也过，要到用户重载窗口才发现浮层不出现。
+  const OLD = 'function getHtmlForWebview($,J,Q,X,Y,W){let z=S1.Uri.joinPath(this.extensionUri,"webview","index.js"),G=$.asWebviewUri(z),B=G$(),Z2=`style-src ${$.cspSource}`;return `<!DOCTYPE html><html><body><script nonce="${B}" src="${G}" type="module"></script></body></html>`}';
+  const NEW = 'function getHtmlForWebview($,J,Q,X,Y,W){let z=y1.Uri.joinPath(this.extensionUri,"webview","index.js"),G=$.asWebviewUri(z),V=G$(),Z2=`style-src ${$.cspSource}`;return `<!DOCTYPE html><html><body><script nonce="${V}" src="${G}" type="module"></script></body></html>`}';
+
+  check("2.1.284 那版：认出 nonce=B、vscode=S1", () => {
+    const L = learn(OLD);
+    assert.ok(L, "该能认出注入点");
+    assert.strictEqual(L.nonce, "B");
+    assert.strictEqual(L.webview, "$");
+    assert.strictEqual(L.vscode, "S1");
+  });
+
+  check("2.1.285 那版（三处改名）：照样认得出", () => {
+    const L = learn(NEW);
+    assert.ok(L, "扩展改名不该让补丁哑掉");
+    assert.strictEqual(L.nonce, "V");
+    assert.strictEqual(L.webview, "$");
+    assert.strictEqual(L.vscode, "y1");
+  });
+
+  check("注入的标签用的是学到的变量名，不是写死的", () => {
+    const html = buildInject(learn(NEW));
+    assert.ok(html.includes('nonce="${V}"'), "nonce 该用 V：" + html);
+    assert.ok(html.includes("$.asWebviewUri(y1.Uri.joinPath("), "该用学到的 webview/vscode：" + html);
+    assert.ok(html.includes("usage-overlay.js"));
+    assert.ok(!/\$\{B\}|\bS1\b/.test(html), "不该残留旧名字：" + html);
+  });
+
+  check("CSP 兜底也是按学到的 nonce 变量拼的", () => {
+    const c = buildCsp(learn(NEW));
+    assert.strictEqual(c.from, "script-src 'nonce-${V}';");
+    assert.strictEqual(c.to, "script-src 'nonce-${V}' ${$.cspSource};");
+  });
+
+  check("结构真变了要返回 null（而不是拼一段坏代码出来）", () => {
+    assert.strictEqual(learn("<html>扩展换了个写法</html>"), null);
+    assert.strictEqual(learn('getHtmlForWebview($,J){return "<script nonce=1></script>"}'), null);
+    // 只有调用点、没有函数定义时不能瞎认
+    assert.strictEqual(learn('getHtmlForWebview($.webview,void 0,void 0,!0)'), null);
+  });
+}
+
 console.log("\n" + (process.exitCode ? "\x1b[31m有失败\x1b[0m" : "\x1b[32m全部通过\x1b[0m") + ` (${passed} 项)\n`);

@@ -26,20 +26,50 @@ const EXT_PREFIX = "anthropic.claude-code-";
 const OVERLAY_NAME = "usage-overlay.js";
 const BACKUP_SUFFIX = ".bak-usage-overlay";
 
-// extension.js 里生成 webview HTML 的那行 script 标签，全文件唯一
-const ANCHOR =
-  '<script nonce="${B}" src="${G}" type="module"></script>';
+// 注入点的几个变量名一律从 extension.js 里现学，一个都不写死。
+// 2.1.284 → 2.1.285 就一次改了三处：nonce 变量 B→V、vscode 模块别名 S1→y1。
+// 写死的后果不是"注入失败"而是"注入一段 ReferenceError" —— 补丁装上、
+// 资源拷好、语法检查也过，要到用户重载窗口才发现浮层不出现。
+function learn(src) {
+  // JS 标识符允许 $，压缩器很爱用（webview 实例就叫 $）—— 别用 \w，那匹配不到它
+  const ID = "[A-Za-z_$][\\w$]*";
+  // 生成 webview HTML 的那行 script 标签，全文件唯一
+  const anchor = src.match(new RegExp(
+    '<script nonce="\\$\\{(' + ID + ')\\}" src="\\$\\{(' + ID + ')\\}" type="module"></script>'));
+  if (!anchor) return null;
+  // 函数定义（6 个参数）的第一个参数就是 webview 实例。
+  // 注意别拿调用点 getHtmlForWebview($.webview,void 0,...) 去匹配。
+  const def = src.match(new RegExp(
+    "getHtmlForWebview\\((" + ID + "),(" + ID + "),(" + ID + "),(" + ID + "),(" + ID + "),(" + ID + ")\\)\\{"));
+  if (!def) return null;
+  // vscode 模块别名：从既有的 y1.Uri.joinPath(this.extensionUri,"webview","index.js") 里认
+  const mod = src.match(new RegExp(
+    "(" + ID + ")\\.Uri\\.joinPath\\(this\\.extensionUri,\"webview\",\"index\\.js\"\\)"));
+  if (!mod) return null;
+  return {
+    anchor: anchor[0],
+    nonce: anchor[1],
+    webview: def[1],
+    vscode: mod[1],
+  };
+}
 
-// ⚠️ 用普通字符串拼接，绝不能用模板字符串，否则 ${B} 会被 Node 插值掉
-const INJECT =
-  ANCHOR +
-  '<script nonce="${B}" src="${$.asWebviewUri(S1.Uri.joinPath(this.extensionUri,"webview","' +
-  OVERLAY_NAME +
-  '"))}"></script>';
+// ⚠️ 用普通字符串拼接，绝不能用模板字符串，否则 ${...} 会被 Node 插值掉
+function buildInject(L) {
+  return (
+    L.anchor +
+    '<script nonce="${' + L.nonce + '}" src="${' + L.webview + '.asWebviewUri(' +
+    L.vscode + '.Uri.joinPath(this.extensionUri,"webview","' + OVERLAY_NAME + '"))}"></script>'
+  );
+}
 
 // CSP 里脚本来源，顺带把扩展自己的资源域放行，作为 nonce 之外的兜底
-const CSP_ANCHOR = "script-src 'nonce-${B}';";
-const CSP_INJECT = "script-src 'nonce-${B}' ${$.cspSource};";
+function buildCsp(L) {
+  return {
+    from: "script-src 'nonce-${" + L.nonce + "}';",
+    to: "script-src 'nonce-${" + L.nonce + "}' ${" + L.webview + ".cspSource};",
+  };
+}
 
 const MARKER = OVERLAY_NAME; // 用它判断是否已注入
 
@@ -107,6 +137,12 @@ function status() {
     const tag = patched && hasFile ? c.green("已安装") : c.dim("未安装");
     log(`  ${path.basename(dir)}  ${tag}`);
     log(c.dim(`     补丁:${patched ? "有" : "无"}  资源:${hasFile ? "有" : "无"}  备份:${hasBackup ? "有" : "无"}`));
+    if (!patched) {
+      const L = learn(src);
+      log(c.dim("     注入点:" + (L
+        ? `找到了（nonce=${L.nonce} webview=${L.webview} vscode=${L.vscode}）—— 跑 node apply.js 装上`
+        : c.yellow("找不到，扩展结构可能变了，需要人工看一眼"))));
+    }
   }
   log("");
 }
@@ -196,8 +232,11 @@ function apply() {
       continue;
     }
 
-    if (!src.includes(ANCHOR)) {
+    const L = learn(src);
+    if (!L) {
       log(`  ${name}  ${c.yellow("找不到注入锚点，跳过（扩展结构可能变了）")}`);
+      log(c.dim("      这次要人工看一眼了：getHtmlForWebview 里的 script 标签或函数签名改了。"));
+      log(c.dim("      找 " + OVERLAY_NAME + " 需要的四样东西：script 标签原文、nonce 变量名、webview 实例名、vscode 模块别名。"));
       continue;
     }
 
@@ -211,13 +250,16 @@ function apply() {
     const baselineOk = syntaxCheck(ext).ok;
 
     // --- 注入 ---
-    let out = src.replace(ANCHOR, INJECT);
+    let out = src.replace(L.anchor, buildInject(L));
     if (out === src) {
       log(`  ${name}  ${c.red("替换失败")}`);
       continue;
     }
-    if (out.includes(CSP_ANCHOR)) {
-      out = out.replace(CSP_ANCHOR, CSP_INJECT);
+    const csp = buildCsp(L);
+    if (out.includes(csp.from)) {
+      out = out.replace(csp.from, csp.to);
+    } else {
+      log(c.dim(`      （CSP 里没找到 ${csp.from}，只靠 nonce 放行）`));
     }
 
     fs.writeFileSync(ext, out, "utf8");
@@ -251,7 +293,13 @@ function apply() {
 
 /* ---------------------------------------------------------------- main */
 
-const arg = (process.argv[2] || "").toLowerCase();
-if (arg === "--status" || arg === "-s") status();
-else if (arg === "--revert" || arg === "-r") revert();
-else apply();
+// learn/buildInject/buildCsp 给 test.js 用 —— 扩展一改名就得有人守着，
+// 所以让它们可以被 require 进来单独测，而不是只能整个脚本跑一遍看结果。
+module.exports = { learn, buildInject, buildCsp };
+
+if (require.main === module) {
+  const arg = (process.argv[2] || "").toLowerCase();
+  if (arg === "--status" || arg === "-s") status();
+  else if (arg === "--revert" || arg === "-r") revert();
+  else apply();
+}
