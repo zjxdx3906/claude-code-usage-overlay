@@ -75,12 +75,16 @@ const MARKER = OVERLAY_NAME; // 用它判断是否已注入
 
 /* ---------------------------------------------------------------- utils */
 
+// 输出重定向到文件时不要塞 ANSI 转义 —— autorepair.vbs 就是这么调用的，
+// 否则日志里全是 [1m [0m 这种噪声，真正有用的那行反而看不清
+const COLOR = !!process.stdout.isTTY;
+
 const c = {
-  dim: (s) => `\x1b[2m${s}\x1b[0m`,
-  green: (s) => `\x1b[32m${s}\x1b[0m`,
-  yellow: (s) => `\x1b[33m${s}\x1b[0m`,
-  red: (s) => `\x1b[31m${s}\x1b[0m`,
-  bold: (s) => `\x1b[1m${s}\x1b[0m`,
+  dim: (s) => (COLOR ? `\x1b[2m${s}\x1b[0m` : s),
+  green: (s) => (COLOR ? `\x1b[32m${s}\x1b[0m` : s),
+  yellow: (s) => (COLOR ? `\x1b[33m${s}\x1b[0m` : s),
+  red: (s) => (COLOR ? `\x1b[31m${s}\x1b[0m` : s),
+  bold: (s) => (COLOR ? `\x1b[1m${s}\x1b[0m` : s),
 };
 
 function log(...a) {

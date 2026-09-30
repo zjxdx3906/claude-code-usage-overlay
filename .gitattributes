@@ -1,0 +1,8 @@
+# Windows 脚本一律以 CRLF 落盘。
+#
+# install-autorepair.cmd / uninstall-autorepair.cmd 是双击运行的入口，
+# 而 cmd.exe 解析批处理文件时对 LF-only 的处理是有坑的（标签、if 块都可能出错）。
+# 本机 core.autocrlf=true 会顺手转，但那是每台机器各自的设置 —— 别人克隆时
+# 关掉了 autocrlf 就会拿到 LF。这两个文件不能赌这个。
+*.cmd text eol=crlf
+*.vbs text eol=crlf
