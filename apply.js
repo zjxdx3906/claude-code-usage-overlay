@@ -37,10 +37,14 @@ function learn(src) {
   const anchor = src.match(new RegExp(
     '<script nonce="\\$\\{(' + ID + ')\\}" src="\\$\\{(' + ID + ')\\}" type="module"></script>'));
   if (!anchor) return null;
-  // 函数定义（6 个参数）的第一个参数就是 webview 实例。
-  // 注意别拿调用点 getHtmlForWebview($.webview,void 0,...) 去匹配。
+  // 函数定义的第一个参数就是 webview 实例。**参数个数千万别写死** ——
+  // 2.1.301 从 6 个变成了 7 个（末尾多一个带默认值的 z=!1），
+  // 写成 "6 个 ID 再 ){" 的话新版本直接认不出来，补丁装不上、浮层消失。
+  // 这里只要：第一个参数是纯标识符，后面跟逗号，再往后不远就是 "){ "。
+  // 调用点 getHtmlForWebview($.webview,void 0,...) 匹配不上 ——
+  // $.webview 带点，而标识符后面必须紧跟逗号。
   const def = src.match(new RegExp(
-    "getHtmlForWebview\\((" + ID + "),(" + ID + "),(" + ID + "),(" + ID + "),(" + ID + "),(" + ID + ")\\)\\{"));
+    "getHtmlForWebview\\((" + ID + ")\\s*,[\\s\\S]{0,300}?\\)\\{"));
   if (!def) return null;
   // vscode 模块别名：从既有的 y1.Uri.joinPath(this.extensionUri,"webview","index.js") 里认
   const mod = src.match(new RegExp(

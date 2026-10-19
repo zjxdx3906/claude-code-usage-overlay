@@ -1020,6 +1020,9 @@ console.log("\n补丁脚本能跟上扩展改名（apply.js）");
   // 补丁装上、语法检查也过，要到用户重载窗口才发现浮层不出现。
   const OLD = 'function getHtmlForWebview($,J,Q,X,Y,W){let z=S1.Uri.joinPath(this.extensionUri,"webview","index.js"),G=$.asWebviewUri(z),B=G$(),Z2=`style-src ${$.cspSource}`;return `<!DOCTYPE html><html><body><script nonce="${B}" src="${G}" type="module"></script></body></html>`}';
   const NEW = 'function getHtmlForWebview($,J,Q,X,Y,W){let z=y1.Uri.joinPath(this.extensionUri,"webview","index.js"),G=$.asWebviewUri(z),V=G$(),Z2=`style-src ${$.cspSource}`;return `<!DOCTYPE html><html><body><script nonce="${V}" src="${G}" type="module"></script></body></html>`}';
+  // 2.1.301：参数从 6 个变成 7 个（末尾多一个带默认值的 z=!1），vscode 别名 k1→h1，
+  // src 变量也换了名字（G→K）。写死参数个数会让 learn() 返回 null —— 补丁装不上。
+  const P7 = 'function getHtmlForWebview($,J,Q,X,Y,W,z=!1){let G=h1.Uri.joinPath(this.extensionUri,"webview","index.js"),K=$.asWebviewUri(G),B=G$(),Z2=`style-src ${$.cspSource}`;return `<!DOCTYPE html><html><body><script nonce="${B}" src="${K}" type="module"></script></body></html>`}';
 
   check("2.1.284 那版：认出 nonce=B、vscode=S1", () => {
     const L = learn(OLD);
@@ -1035,6 +1038,17 @@ console.log("\n补丁脚本能跟上扩展改名（apply.js）");
     assert.strictEqual(L.nonce, "V");
     assert.strictEqual(L.webview, "$");
     assert.strictEqual(L.vscode, "y1");
+  });
+
+  check("2.1.301 那版（参数从 6 个变 7 个）：参数个数不该写死", () => {
+    const L = learn(P7);
+    assert.ok(L, "多一个带默认值的参数不该让补丁哑掉");
+    assert.strictEqual(L.nonce, "B");
+    assert.strictEqual(L.webview, "$");
+    assert.strictEqual(L.vscode, "h1");
+    // 注入出来的东西也要跟着用新名字
+    const html = buildInject(L);
+    assert.ok(html.includes("$.asWebviewUri(h1.Uri.joinPath("), "该用学到的 webview/vscode：" + html);
   });
 
   check("注入的标签用的是学到的变量名，不是写死的", () => {

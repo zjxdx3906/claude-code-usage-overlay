@@ -263,7 +263,7 @@ __cuo.totals("session")    // 当前合计
 
 - **注入方式**：`extension.js` 的 `getHtmlForWebview()` 里有唯一一处
   `<script nonce="${?}" src="${?}" type="module"></script>`，在它后面插一行加载 `webview/usage-overlay.js`；CSP 的 `script-src 'nonce-${?}'` 里再补一个 `${$.cspSource}` 作兜底。
-- ⚠️ **那几个变量名是 `apply.js` 现从 extension.js 里学的，一个都不写死**。2.1.284 → 2.1.285 一次改了三处（nonce `B`→`V`、vscode 模块别名 `S1`→`y1`）。写死的后果特别阴：补丁装上、资源拷好、`node --check` 也过，注入的却是一段 `ReferenceError` —— 要到用户重载窗口发现浮层不出现才暴露。现在 `learn()` 会认出 script 标签、nonce 变量、webview 实例（`getHtmlForWebview` 的第一个参数）、vscode 模块别名（从 `?.Uri.joinPath(this.extensionUri,"webview","index.js")` 反推）；哪一样认不出来就**拒绝注入并明说**，绝不拼一段坏代码出去。`test.js` 拿两版真实结构守着这条。
+- ⚠️ **那几个变量名和函数签名是 `apply.js` 现从 extension.js 里学的，一个都不写死**。实测三次升级三种写法：2.1.284 → 2.1.285 改了 nonce `B`→`V`、vscode 模块别名 `S1`→`y1`；2.1.301 又改了 vscode 别名 `k1`→`h1`，**还把 `getHtmlForWebview` 的参数从 6 个加到 7 个**（末尾多一个带默认值的 `z=!1`）。写死的后果特别阴：补丁装上、资源拷好、`node --check` 也过，注入的却是一段 `ReferenceError` —— 要到用户重载窗口发现浮层不出现才暴露。现在 `learn()` 会认出 script 标签、nonce 变量、webview 实例（`getHtmlForWebview` 的**第一个**参数，参数个数不限定）、vscode 模块别名（从 `?.Uri.joinPath(this.extensionUri,"webview","index.js")` 反推）；哪一样认不出来就**拒绝注入并明说**，绝不拼一段坏代码出去。`test.js` 拿三版真实结构守着这条。
 - **数据来源**：浮层挂 `window.addEventListener("message")`，接宿主转发给 webview 的那条流。
 - ⚠️ **信封是套两层的**（曾经在这里栽过，记账恒为 0）：
 
@@ -283,7 +283,9 @@ __cuo.totals("session")    // 当前合计
 
 ## 扩展升级后自动补回来
 
-扩展是自动更新的，而更新会删掉整个旧版本目录 —— 补丁随之消失，浮层静悄悄不显示了。实测两天更新了两次（2.1.284 → 2.1.285），靠"发现了再手动重跑"不现实。
+扩展是自动更新的，而更新会删掉整个旧版本目录 —— 补丁随之消失，浮层静悄悄不显示了。实测 2.1.284 → 285 → 286 → 301，差不多两天一更，靠"发现了再手动重跑"不现实。
+
+> 开机自修只在**登录时**跑。VS Code 在会话中途升级扩展它管不着 —— 那种情况要么手动跑一次 `apply.js`，要么干脆把扩展自动更新关掉（`"extensions.autoUpdate": false`），后者才是根治。
 
 装一次开机自修，之后每次登录自动 `apply.js` 一遍：
 
@@ -310,7 +312,7 @@ cscript //B "%USERPROFILE%\.claude\usage-overlay\autorepair.vbs"
 
 ## 已知限制
 
-- **扩展升级会把补丁弄没**。注意不是"被覆盖"，是**连目录一起没了** —— VS Code 升级扩展时删掉整个旧版本目录（2.1.284 → 2.1.285），补丁和资源文件都在里面。重跑 `node apply.js` 即可（幂等，不会重复注入）；`node apply.js --status` 会顺便告诉你注入点认不认得出来，不用等重载窗口才发现。嫌烦就装下面的开机自修。
+- **扩展升级会把补丁弄没**。注意不是"被覆盖"，是**连目录一起没了** —— VS Code 升级扩展时删掉整个旧版本目录（实测 2.1.284 → 285 → 286 → 301），补丁和资源文件都在里面。重跑 `node apply.js` 即可（幂等，不会重复注入）；`node apply.js --status` 会顺便告诉你注入点认不认得出来，不用等重载窗口才发现。**根治办法是把扩展自动更新关掉**（`"extensions.autoUpdate": false`）—— 开机自修只在登录时跑，会话中途的升级它管不着。
 - **只记当前这一场对话**。重载窗口不清零了（见持久化），但**换一场对话就从零开始** —— 切 `sessionId` 时清账是刻意的。要看跨会话的历史统计得用 ccusage 这类读 `~/.claude/projects/*.jsonl` 的工具。
 - **自动压缩线是手填的 200k**。CLI 不在消息里报这个数，所以是按实测（167K/175K 触发）定的一条经验线。哪天真换了触发点，在齿轮面板里改一下。
 - **`managed-settings.json` 不支持高峰/空闲两档价**（schema 一个模型只能给一组单价），所以那里填的是空闲价，高峰时段 CLI 的数字会偏低约一半。浮层本身是分档的，不受影响。
